@@ -1,6 +1,7 @@
 import os
 import json
 import sqlite3
+import urllib.request
 import torch
 from flask import Flask, render_template, request, jsonify
 from google import genai
@@ -20,7 +21,23 @@ torch.load = _patched_torch_load
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY"))
 
-DB_PATH = "decagon_index.db"
+# --- DOWNLOAD DATABASE FROM GITHUB RELEASE ON STARTUP ---
+DB_PATH = "/tmp/decagon_index.db"
+# Direct URL to the asset in your GitHub release tag 'database'
+DB_DOWNLOAD_URL = "https://github.com/kanchang12/nursetreatment/releases/download/database/decagon_index.db"
+
+def ensure_database():
+    if not os.path.exists(DB_PATH):
+        print(f"[SYSTEM] Downloading database from GitHub release asset...")
+        try:
+            urllib.request.urlretrieve(DB_DOWNLOAD_URL, DB_PATH)
+            print(f"[SUCCESS] Database successfully downloaded to {DB_PATH}")
+        except Exception as e:
+            print(f"[ERROR] Failed to download database: {e}")
+
+# Trigger download on boot
+ensure_database()
+# -------------------------------------------------------
 
 def query_db(query, params=()):
     if not os.path.exists(DB_PATH):
@@ -53,7 +70,6 @@ def clinical_evaluate():
     medications = req_data.get('medications', '')
     has_imaging = req_data.get('has_imaging', False)
 
-    # 1. Query Real Synthea Patient Data from SQLite
     matched_patient = None
     patient_meds = []
     patient_conditions = []
@@ -69,13 +85,11 @@ def clinical_evaluate():
             patient_conditions = query_db("SELECT * FROM conditions WHERE patient = ?", (uuid,))
             patient_observations = query_db("SELECT * FROM observations WHERE patient = ? LIMIT 15", (uuid,))
 
-    # 2. Query Real Decagon Graph Interactions for active medications
     matched_interactions = []
     if medications:
         med_tokens = [m.strip() for m in medications.split(',')]
         for token in med_tokens:
             if len(token) > 2:
-                # Search across decagon interaction table columns
                 hits = query_db(
                     "SELECT * FROM decagon_interactions WHERE CAST(zine AS TEXT) LIKE ? OR CAST(gene AS TEXT) LIKE ? LIMIT 5", 
                     (f"%{token}%", f"%{token}%")
