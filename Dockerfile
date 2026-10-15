@@ -7,10 +7,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install lightweight CPU-only PyTorch and core libraries to save space
-RUN pip install --no-cache-dir \
-    torch torchvision --index-url https://download.pytorch.org/whl/cpu
-
+# Install core requirements first from standard PyPI
 RUN pip install --no-cache-dir \
     flask \
     pandas \
@@ -18,8 +15,11 @@ RUN pip install --no-cache-dir \
     python-dotenv \
     gunicorn
 
+# Install CPU-only PyTorch specifying explicit binary wheels or fallback index
+RUN pip install --no-cache-dir torch torchvision --extra-index-url https://download.pytorch.org/whl/cpu
+
 COPY . /app
 
-EXPOSE 8000
+EXPOSE 5000
 
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app:app"]
